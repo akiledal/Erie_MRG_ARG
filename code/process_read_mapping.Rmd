@@ -10,6 +10,9 @@ library(ggmap)
 library(tidyverse)
 library(Rsamtools)
 pg <- DBI::dbConnect(RPostgres::Postgres(),dbname = "glamr_data", host = "localhost", port = "5432", user = "glamr_admin", password = "glamr2023") 
+
+secrets <- yaml::read_yaml("secrets.yaml")
+maps_api_key <- secrets$maps_api_key
 ```
 
 ## Idetifying Samples for mapping
@@ -466,7 +469,7 @@ ggsave("results/Metal_resistance_gene_samples.png",width=5,height=3,scale=1.5)
 ```
 Map for MerD
 ```{r}
-register_google("AIzaSyApZDW1BV-lQfjdaNJrOpbwVPa6_0kqyAw") 
+register_google(maps_api_key) 
 
 ggmap(get_googlemap(center = c(lon = -83.326801, lat = 41.778739), zoom = 10, maptype = "terrain")) +
   geom_point(data = per_gene_rpkm_summary |> 
@@ -494,7 +497,7 @@ library(RColorBrewer)
 
 
 
-register_google("AIzaSyApZDW1BV-lQfjdaNJrOpbwVPa6_0kqyAw") 
+register_google(maps_api_key) 
 
 # Define the metal-resistant genes
 metal_resistant_genes <- c("MerA", "MerP", "MerB", "MerC", "MerD", "MerE", "MerR", "MerT", "MerF", "ArsD", "PbrT", "PbrA")
@@ -544,7 +547,7 @@ library(dplyr)
 library(viridis)
 library(RColorBrewer)
 
-register_google("AIzaSyApZDW1BV-lQfjdaNJrOpbwVPa6_0kqyAw") 
+register_google(maps_api_key) 
 
 # Define the antibiotic-resistant genes
 antibiotic_resistant_genes <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
@@ -588,7 +591,7 @@ library(ggmap)
 library(ggplot2)
 library(dplyr)
 
-register_google("AIzaSyApZDW1BV-lQfjdaNJrOpbwVPa6_0kqyAw") 
+register_google(maps_api_key) 
 
 google_map <- get_googlemap(center = c(lon = -83.326801, lat = 41.778739), zoom = 10, maptype = "terrain")
 
