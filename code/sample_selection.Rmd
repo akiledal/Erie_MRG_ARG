@@ -1,0 +1,55 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = here::here(""))
+library(tidyverse)
+library(readxl)
+library(googledrive)
+```
+```{r}
+as_id("https://docs.google.com/spreadsheets/d/1z2IajV0Ay1lRjH9d0ibNBuf8PY0IbtEz/edit#gid=349037648") %>% 
+  drive_download("data/Great_Lakes_Omics_Datasets.xlsx",overwrite = TRUE)
+
+samples <- readxl::read_excel("data/Great_Lakes_Omics_Datasets.xlsx",guess_max = 3000,sheet = "samples") %>%
+  select(SampleID:Notes)
+
+datasets <- readxl::read_excel("data/Great_Lakes_Omics_Datasets.xlsx",sheet = "studiesdatasets",range = "A1:R1000") %>% 
+  filter(!is.na(dataset))
+```
+```{r}
+filtered_samples <- samples |>
+  filter(sample_type == "metagenome", 
+         geo_loc_name == "Lake Erie")
+```
+
+
+```{r}
+glamr_metagenome_sample <- system("ls /geomicro/data2/kiledal/GLAMR/data/omics/metagenomes/*/reads/decon_fwd_reads_fastp.fastq.gz", intern=TRUE) |> 
+  data.frame(fwd_reads=_) |>
+  mutate(sample=str_remove(fwd_reads,"/geomicro/data2/kiledal/GLAMR/data/omics/metagenomes/") |> 
+           str_remove("/reads.*"),
+         rev_reads=str_replace(fwd_reads,"fwd","rev") ,
+         linked_fwd_reads=str_glue("data/metagenomic_reads/{sample}_fwd.fastq.gz"),
+         linked_rev_reads=str_glue("data/metagenomic_reads/{sample}_rev.fastq.gz") 
+         )|>
+  filter(str_detect(sample,"^samp_"))
+  
+  
+```
+
+```{r}
+fs::link_create(glamr_metagenome_sample$fwd_reads,glamr_metagenome_sample$linked_fwd_reads)
+fs::link_create(glamr_metagenome_sample$rev_reads,glamr_metagenome_sample$linked_rev_reads)
+
+
+
+```
+
+
+
+
+
+
