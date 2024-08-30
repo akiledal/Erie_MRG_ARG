@@ -260,7 +260,8 @@ metal_data <- per_gene_rpkm_summary %>%
   filter(gene %in% metal_genes) %>%
   mutate(year = as.numeric(format(date, "%Y")),
          year = as.factor(year)) %>%  # Ensure 'year' is a numeric column
-  filter(year %in% c("2014", "2019"))
+  filter(year %in% c("2014", "2019")) %>% 
+  left_join(gene_info)
 
 years_to_show <- c("2014", "2019")
 
@@ -357,10 +358,9 @@ metal_data %>%
         axis.title.x = element_text(size = 10), 
         strip.text.x = element_text(size = 10)) + 
   labs(x = "Time of Year", 
-       title = "Annual Variations of the Metal Resistant Genes Microbiome", 
        y = "RPKM")
-ggsave("results/Annual_Variations_of_the_Metal_Resistant_Genes_Microbiome.png", plot = last_plot(), width = 14, height = 8, dpi = 300)
-ggsave("results/Annual_Variations_of_the_Metal_Resistant_Genes_Microbiome.pdf", plot = last_plot(), width = 14, height = 8)
+ggsave("results/Annual_Variations_of_the_Metal_Resistant_Genes_Microbiome.png", plot = last_plot(), width = 3, height = 2, scale = 2)
+ggsave("results/Annual_Variations_of_the_Metal_Resistant_Genes_Microbiome.pdf", plot = last_plot(), width = 3, height = 2, scale = 2)
 
 
 my_comparisons <- list(c("2014", "2019"))
@@ -373,11 +373,10 @@ metal_data %>%
   stat_compare_means(comparisons = my_comparisons,method = "wilcox",na.rm = TRUE) +
   scale_y_log10() +
   scale_x_discrete(guide = guide_axis(angle = -35)) +
-  facet_grid(~gene, scales = "free_x")
-  ggbeeswarm::geom_quasirandom(aes(color = gene), alpha = 0.5) 
+  ggh4x::facet_nested(~ type_name + gene, scales = "free_x")
 
-ggsave("results/BoxIndividual_Trends_of_All_MRGs.png", plot = last_plot(), width = 10, height = 6, dpi = 300)
-ggsave("results/BoxIndividual_Trends_of_All_MRGs.pdf", plot = last_plot(), width = 10, height = 6)
+ggsave("results/BoxIndividual_Trends_of_All_MRGs.png", plot = last_plot(), width = 4, height = 2, scale = 3)
+ggsave("results/BoxIndividual_Trends_of_All_MRGs.pdf", plot = last_plot(), width = 4, height = 2, scale = 3)
 
 ```
 
@@ -391,7 +390,10 @@ library(ggbeeswarm)
 
 # Filter the data
 filtered_data <- metal_data %>%
-  filter(SampleID %in% public_metagenome_samples$SampleID)
+  filter(SampleID %in% public_metagenome_samples$SampleID) %>% 
+  select(year, rpkm, SampleID, gene) %>% 
+  distinct()
+  
 
 # Create the plot and store it in a variable
 (plot <- ggboxplot(filtered_data, x = "year", y = "rpkm", outlier.shape = NA) +
@@ -401,8 +403,8 @@ filtered_data <- metal_data %>%
 )
 
 # Save the plot as PNG and PDF
-ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.png", plot = plot, width = 10, height = 12, dpi = 300)
-ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.pdf", plot = plot, width = 10, height = 12)
+ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.png", plot = plot, width = 4, height = 3, scale = 2)
+ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.pdf", plot = plot, width = 4, height = 3, scale = 2)
 
 ```
 
@@ -418,7 +420,8 @@ other_genes <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC
 other_data <- per_gene_rpkm_summary %>%
   filter(gene %in% other_genes) %>%
   mutate(year = as.numeric(format(date, "%Y"))) %>%
-  filter(year %in% c(2014, 2019))
+  filter(year %in% c(2014, 2019)) %>% 
+  left_join(gene_info)
 
 other_data$year <- factor(other_data$year, levels = c(2014, 2019))
 
@@ -462,21 +465,10 @@ other_data %>%
   stat_compare_means(comparisons = my_comparisons,method = "wilcox",na.rm = TRUE) +
   scale_y_log10() +
   scale_x_discrete(guide = guide_axis(angle = -35)) +
-  facet_grid(~gene, scales = "free_x")
-  ggbeeswarm::geom_quasirandom(aes(color = gene), alpha = 0.5) 
+  ggh4x::facet_nested(~ type_name + gene, scales = "free_x")
   
-  
-  # ggplot(aes(x = year, y = rpkm, color = gene)) +
-  # geom_point() +
-  # geom_smooth(method = "lm", aes(group = gene)) +
-  # scale_y_log10() +
-  # theme_bw() +
-  # labs(title = "Individual Trends of All the Antibiotic Resistant Genes", y="RPKM", x="Year") +
-  # scale_x_discrete(expand = c(0.05, 0.05 )) + # Adjust the x-axis
-  # theme(legend.position = "bottom")
-
-ggsave("results/BoxIndividual_Trends_of_All_ARGs.png", plot = last_plot(), width = 10, height = 6, dpi = 300)
-ggsave("results/BoxIndividual_Trends_of_All_ARGs.pdf", plot = last_plot(), width = 10, height = 6)
+ggsave("results/BoxIndividual_Trends_of_All_ARGs.png", plot = last_plot(), width = 4, height = 2, scale = 3)
+ggsave("results/BoxIndividual_Trends_of_All_ARGs.pdf", plot = last_plot(),  width = 4, height = 2, scale = 3)
 
 
 other_data %>%
@@ -492,11 +484,10 @@ other_data %>%
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 8), # Rotate x labels for readability
         axis.title.x = element_text(size = 10), # Adjust x-axis title size if necessary
         strip.text.x = element_text(size = 10)) + # Adjust facet label size if necessary
-  labs(x = "Time of Year", 
-       title = "Annual Variations of the Antibiotic Resistant Genes Microbiome", 
+  labs(x = "Time of Year",
        y = "RPKM")
-ggsave("results/Annual_Variations_ARGs_Microbiome.png", plot = last_plot(), width = 14, height = 8, dpi = 300)
-ggsave("results/Annual_Variations_ARGs_Microbiome.pdf", plot = last_plot(), width = 14, height = 8)
+ggsave("results/Annual_Variations_ARGs_Microbiome.png", plot = last_plot(), width = 3, height = 2, scale = 2)
+ggsave("results/Annual_Variations_ARGs_Microbiome.pdf", plot = last_plot(), width = 3, height = 2, scale = 2)
 
 
 
@@ -554,7 +545,7 @@ other_data <- per_gene_rpkm_summary %>%
   filter(gene %in% other_genes) %>%
   mutate(year = as.numeric(format(date, "%Y"))) %>%
   filter(year %in% c(2014, 2019)) %>%
-  filter(SampleID %in% public_metagenome_samples$SampleID)
+  filter(SampleID %in% public_metagenome_samples$SampleID) 
 
 # Convert year to a factor
 other_data$year <- factor(other_data$year, levels = c(2014, 2019))
@@ -578,8 +569,8 @@ print(wilcox_test_result)
 )
   
 # Save the plot as PNG and PDF
-ggsave("results/FStats_Overall_Trend_of_All_ARGs.png", plot = plot, width = 10, height = 12, dpi = 300)
-ggsave("results/FStats_Overall_Trend_of_All_ARGs.pdf", plot = plot, width = 10, height = 12)
+ggsave("results/FStats_Overall_Trend_of_All_ARGs.png", plot = plot, width = 4, height = 3, scale = 2)
+ggsave("results/FStats_Overall_Trend_of_All_ARGs.pdf", plot = plot, width = 4, height = 3, scale = 2)
 
 ```
 
@@ -843,14 +834,15 @@ ggmap(google_map) +
   theme(legend.position = "right",
         legend.key.width = unit(1, "cm"),
         legend.key.height = unit(0.43, "cm"),
-        legend.text = element_text(size = 8)) +
+        legend.text = element_text(size = 8),
+        axis.text.x = element_text(angle = -35, hjust = 0, vjust = 1)) +
   labs(x = "Longitude", y = "Latitude", color = "Gene", size = "RPKM") +
   coord_quickmap(xlim = c(-83.5, -82.9), ylim = c(41.6, 42.089)) +
-  facet_grid(~type_name)
+  facet_wrap(~type_name,ncol = 1)
 
 # Save the map to a file
-ggsave("results/All_MRGs_map.pdf", width = 12, height = 7, scale = 1) 
-ggsave("results/All_MRGs_map.png", width = 11, height = 6, scale = 1) 
+ggsave("results/All_MRGs_map.pdf", width = 4, height = 7, scale = 1) 
+ggsave("results/All_MRGs_map.png", width = 4, height = 6, scale = 1) 
 
 ggsave("results/publication_figures/All_MRGs_map.pdf", width = 12, height = 7, scale = 1) 
 ggsave("results/publication_figures/All_MRGs_map.png", width = 11, height = 6, scale = 1) 
@@ -883,11 +875,12 @@ color_palette <- color_palette[1:length(antibiotic_resistant_genes)]
 ggmap(google_map) +
   geom_point(data = per_gene_rpkm_summary %>% 
               filter(SampleID %in% public_metagenome_samples$SampleID) %>%
-              filter(gene %in% antibiotic_resistant_genes) %>% 
+              filter(gene %in% antibiotic_resistant_genes,
+                     rpkm > 0) %>% 
               left_join(gene_info), 
              aes(lon, lat, color = gene, size = rpkm), alpha = 0.5, inherit.aes = FALSE) +
   #scale_size_area(max_size = 5) +
-  scale_size_continuous(range = c(.2, 5)) + # Adjust size scale for better visibility
+  scale_size_continuous(range = c(.1, 3)) + # Adjust size scale for better visibility
   scale_color_manual(values = color_palette) +  
   guides(color = guide_legend(override.aes = list(alpha = 1)),  
          size = guide_legend(override.aes = list(alpha = 1), title = "RPKM")) +  
@@ -896,7 +889,7 @@ ggmap(google_map) +
         legend.key.width = unit(1, "cm"),
         legend.key.height = unit(0.43, "cm"),
         legend.text = element_text(size = 8)) +
-  labs(x = "Longitude", y = "Latitude", color = "Gene", size = "RPKM", title = "Map of All ARG Presence") +
+  labs(x = "Longitude", y = "Latitude", color = "Gene", size = "Gene abundance\n(rpkm)") +
   coord_quickmap(xlim = c(-83.5, -82.9), ylim = c(41.6, 42.089)) +
   facet_wrap(~type_name)
 
@@ -960,19 +953,21 @@ gene_year_summary <- per_gene_rpkm_summary %>%
   group_by(gene, year) %>%
   summarise(n_samples = n(), .groups = 'drop') %>%
   left_join(total_samples_per_year, by = "year") %>%
-  mutate(percentage = (n_samples / total_samples) * 100)
+  mutate(percentage = (n_samples / total_samples) * 100) %>% 
+  left_join(gene_info)
 
 # Plot the graph with percentage
 ggplot(gene_year_summary, aes(x = gene, y = percentage, fill = factor(year))) + 
   geom_bar(stat = "identity", position = "dodge") +
   theme_bw() +
-  labs(x = "Gene", y = "Percentage of Samples", title = "Percentage of Samples Containing Metal Resistant Genes in 2014 and 2019", fill = "Year") +
+  labs(x = "Gene", y = "% of samples with gene present", fill = "Year") +
   scale_fill_manual(values = c("2014" = "purple", "2019" = "pink")) + # Optional: Set custom colors for the bars
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) # Rotate x labels for readability
+  theme(axis.text.x = element_text(angle = -35, vjust = 1, hjust = 0)) + # Rotate x labels for readability
+  facet_grid(~type_name,scales = "free_x",space = "free_x")
 
 # Save the plots
-ggsave("results/Percentage_of_Samples_Containing_MRGs_in_2014_and_2019.pdf", width=8, height=4, scale=1.5)
-ggsave("results/Percentage_of_Samples_Containing_MRGs_in_2014_and_2019.png", width=8, height=4, scale=1.5)
+ggsave("results/Percentage_of_Samples_Containing_MRGs_in_2014_and_2019.pdf",  width = 3, height = 1, scale = 2.75)
+ggsave("results/Percentage_of_Samples_Containing_MRGs_in_2014_and_2019.png",  width = 3, height = 1, scale = 2.75)
 
 ```
 Number of ARG Samples Over Time
@@ -1005,20 +1000,21 @@ arg_year_summary <- per_gene_rpkm_summary %>%
   select(gene, year, SampleID) %>% distinct() %>%
   summarise(n_samples = n(), .groups = 'drop') %>%
   left_join(total_samples_per_year, by = "year") %>%
-  mutate(percentage = (n_samples / total_samples) * 100)
+  mutate(percentage = (n_samples / total_samples) * 100) %>% 
+  left_join(gene_info)
 
 # Plot the graph with percentage values
 ggplot(arg_year_summary, aes(x = gene, y = percentage, fill = factor(year))) + 
   geom_bar(stat = "identity", position = "dodge") +
   theme_bw() +
-  labs(x = "Gene", y = "Percentage of Samples", 
-       title = "Percentage of Samples Containing Antibiotic Resistant Genes in 2014 and 2019", fill = "Year") +
+  labs(x = "Gene", y = "% of samples with gene present", fill = "Year") +
   scale_fill_manual(values = c("2014" = "salmon", "2019" = "skyblue")) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), legend.title = element_blank()) # Rotate x labels and remove legend title
+  theme(axis.text.x = element_text(angle = -35, vjust = 1, hjust = 0), legend.title = element_blank()) + # Rotate x labels and remove legend title
+  facet_grid(~type_name,scales = "free_x",space = "free_x")
 
 # Save the plots
-ggsave("results/Percentage_of_Samples_Containing_ARGs_in_2014_and_2019.pdf", width = 10, height = 5, scale = 1.5)
-ggsave("results/Percentage_of_Samples_Containing_ARGs_in_2014_and_2019.png", width = 10, height = 5, scale = 1.5)
+ggsave("results/Percentage_of_Samples_Containing_ARGs_in_2014_and_2019.pdf", width = 5, height = 2, scale = 2.5)
+ggsave("results/Percentage_of_Samples_Containing_ARGs_in_2014_and_2019.png", width = 5, height = 2, scale = 2.5)
 ```
 
 
@@ -1164,6 +1160,135 @@ ggsave("results/MRG_relative_abundance_over_years.pdf", width=10, height=5, scal
 ggsave("results/MRG_relative_abundance_over_years.png", width=10, height=5, scale=1.5)
 
 ```
+
+
+## Gene correlations
+```{r}
+rpkm_wide <- rpkm_results %>% 
+  select(SampleID, gene, rpkm) %>% 
+  group_by(SampleID, gene) %>% 
+  summarise(rpkm = sum(rpkm)) %>% 
+  filter(rpkm > 0) %>% 
+  pivot_wider(names_from = gene, values_from = rpkm, values_fill = 0) %>% 
+  column_to_rownames("SampleID")
+
+mrg_arg_corr <- cor(rpkm_wide)
+
+cor_clust <- dist(mrg_arg_corr) %>% hclust(method = "average")
+
+plot(cor_clust)
+clust_order <- cor_clust$labels[cor_clust$order] %>% 
+  data.frame(gene = .) %>% 
+  mutate(order = row_number())
+
+mrg_arg_corr_upper <- mrg_arg_corr
+mrg_arg_corr_upper[lower.tri(mrg_arg_corr_upper)] <- NA
+
+mrg_arg_corr_long <- mrg_arg_corr %>% 
+  as.data.frame() %>% 
+  rownames_to_column("gene1") %>% 
+  pivot_longer(-gene1, names_to = "gene2", values_to = "r") %>% 
+  filter(gene1 != gene2,
+         !is.na(r)) %>% 
+  left_join(gene_info %>% select(gene1 = "gene", gene1_type = "type_short", gene1_resistance = "type_name")) %>% 
+  left_join(gene_info %>% select(gene2 = "gene", gene2_type = "type_short", gene2_resistance = "type_name")) %>% 
+  distinct() %>% 
+  mutate(cor_type = case_when(gene1_type == gene2_type ~ "within",
+                              gene1_type != gene2_type ~ "between",
+                              ),
+         resistance_type = case_when(gene1_resistance == gene2_resistance ~ "within",
+                                     gene1_resistance != gene2_resistance ~ "between")) %>% 
+  left_join(clust_order %>% dplyr::rename(gene1 = "gene", gene1_order = "order")) %>% 
+  left_join(clust_order %>% dplyr::rename(gene2 = "gene", gene2_order = "order"))
+
+mrg_arg_corr_long %>% 
+  ggplot(aes(cor_type, r)) +
+  geom_boxplot()
+
+mrg_arg_corr_long %>%
+  filter(cor_type == "between") %>% 
+  ggplot(aes(reorder(gene1_resistance,gene1_order), reorder(gene2_resistance,gene2_order), fill = r)) +
+  geom_tile() +
+  theme_bw() +
+  scale_fill_viridis_c() +
+  labs(x = NULL,
+       y= NULL) +
+  theme(axis.text.x = element_text(angle = -35, hjust =0, vjust = 1))
+
+```
+
+```{r}
+
+rpkm_resistance <- rpkm_results %>% 
+  select(SampleID, type_name,gene , rpkm) %>% 
+  group_by(SampleID, gene) %>% 
+  summarise(rpkm = sum(rpkm)) %>% 
+  filter(rpkm > 0) %>% 
+  left_join(gene_info) %>% 
+  group_by(SampleID, type_name) %>% 
+  summarise(rpkm = mean(rpkm)) %>% 
+  pivot_wider(names_from = type_name, values_from = rpkm, values_fill = 0) %>% 
+  column_to_rownames("SampleID")
+
+resistance_corr <- cor(rpkm_resistance)
+
+resistance_corr_clust <- dist(resistance_corr) %>% hclust(method = "average")
+
+plot(resistance_corr_clust)
+clust_order <- resistance_corr_clust$labels[resistance_corr_clust$order] %>% 
+  data.frame(resistance = .) %>% 
+  mutate(order = row_number())
+
+resistance_corr %>% 
+  as.data.frame() %>% 
+  rownames_to_column("res1") %>% 
+  pivot_longer(-res1, names_to = "res2", values_to = "r") %>% 
+  left_join(clust_order %>% dplyr::rename(res1 = "resistance", res1_order = "order")) %>% 
+  left_join(clust_order %>% dplyr::rename(res2 = "resistance", res2_order = "order")) %>% 
+  ggplot(aes(reorder(res1,res1_order), reorder(res2,res2_order), fill = r)) + 
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme_bw() +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text.x = element_text(angle = -35, hjust =0, vjust = 1)) + 
+  coord_fixed()
+
+ggsave("results/resistance_correlation.png", width = 4, height = 3, scale =2)
+ggsave("results/resistance_correlation.pdf", width = 4, height = 3, scale =2)
+
+rpkm_summary <- rpkm_results %>% 
+  left_join(gene_info) %>% 
+  select(SampleID, type_name, type_short, rpkm) %>% 
+  group_by(SampleID, type_name, type_short) %>% 
+  summarise(rpkm = mean(rpkm))
+
+mercury_resistance <- rpkm_summary %>% 
+  ungroup() %>% 
+  filter(type_name == "Mercury") %>% 
+  mutate(mercury_abund = rpkm) %>%
+  select(SampleID, mercury_abund) 
+
+abs_rpkm_summary <- rpkm_summary %>% 
+  filter(type_short == "ARG") %>% 
+  left_join(mercury_resistance)
+
+abs_rpkm_summary %>% 
+  ggplot(aes(rpkm, mercury_abund, color = type_name)) +
+  geom_point(alpha = 0.25) + 
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_bw() + 
+  geom_smooth(method = "lm", se = FALSE) + 
+  labs(x = "ARG abundance (mean rpkm) [log10]",
+       y = "Mercury resistance gene abundance (mean rpkm) [log10]",
+       color = "Antimicrobial resistance")
+
+ggsave("results/mercury_ARG_correlation.png", width = 4, height = 3, scale =2)
+ggsave("results/mercury_ARG_correlation.pdf", width = 4, height = 3, scale =2)
+
+```
+
+
 
 ```{r}
 if (!requireNamespace("pheatmap", quietly = TRUE)) {
@@ -1343,4 +1468,3 @@ installed_packages <- as.data.frame(installed.packages()[, c("Package", "Version
 print(installed_packages)
 
 ```
-
