@@ -4,16 +4,19 @@ output: html_notebook
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = here::here(""))
+knitr::opts_knit$set(root.dir = here::here("~/projects/2024_mrg_and_arg_copy_from_saahith/"))
 
 library(ggmap)
 library(tidyverse)
 library(Rsamtools)
 pg <- DBI::dbConnect(RPostgres::Postgres(),dbname = "glamr_data", host = "localhost", port = "5432", user = "glamr_admin", password = "glamr2023") 
+```
 
+```{r}
 secrets <- yaml::read_yaml("secrets.yaml")
 maps_api_key <- secrets$maps_api_key
 ```
+
 
 ## Idetifying Samples for mapping
 Get sample metadata
@@ -136,6 +139,8 @@ mapped_sample_info <- samples %>%
 
 all_bam_stats_w_seqs_bam <- map_df(bam_files_w_info$path, bam_stats_w_nuc_info) |>
   write_rds("data/read_mapping_summary.rds")
+
+#all_bam_stats_w_seqs_bam <- read_rds("data/read_mapping_summary.rds")
 ```
 Reads-in the proccessed results (if restarting)
 ```
@@ -157,7 +162,10 @@ Calc. rpkm
 rpkm_results <- map_dfr(bam_files_w_info$path,calc_rpkm) 
 
 write_rds(rpkm_results,"data/rpkms.rds") 
+
+#rpkm_results <- read_rds("data/rpkms.rds") 
 ```
+
 Summarize rpkm results
 ```{r}
 rpkm_sample_info <- rpkm_results |>
@@ -178,7 +186,7 @@ public_glmr_datasets <- GLAMR_datasets |>
   filter(private==FALSE)
 
 public_metagenome_samples <- samples |>
-  filter(SampleID %in% glamr_metagenome_sample$sample, 
+  filter(sample_type == "metagenome ", 
          StudyID %in% public_glmr_datasets$StudyID, 
          geo_loc_name=="Lake Erie") 
 ```
@@ -199,13 +207,14 @@ metal_data <- per_gene_rpkm_summary %>%
 metal_data$year <- factor(metal_data$year, levels = c(2014, 2019))
 
 # Generate the plot
-p1 <- metal_data %>%
+(p1 <- metal_data %>%
   filter(SampleID %in% public_metagenome_samples$SampleID) %>%
   ggplot(aes(x = year, y = rpkm, color = gene)) +
   geom_point() +
   theme_bw() +
   scale_y_continuous(limits = c(0, 0.01)) +  # Set y-axis limits to 0 and 0.02
   labs(title = "Presence of Metal Resistant Genes in the Microbiome", x = "Year", y = "RPKM")
+)
 
 # Print the plot
 print(p1)
@@ -508,7 +517,8 @@ google_map <- get_googlemap(center = c(lon = -83.326801, lat = 41.778739), zoom 
 # Prepare the data for plotting
 gene_data <- per_gene_rpkm_summary %>%
   filter(SampleID %in% public_metagenome_samples$SampleID) %>%
-  filter(gene %in% metal_resistant_genes)
+  filter(gene %in% metal_resistant_genes) %>% 
+  left_join(gene_info)
 
 # Create a color palette that contrasts bright and dark colors
 bright_colors <- c("#9ECAE1", "#C7E9C0", "#FEE6CE", "#FDCDAC", "#FFF7BC", "#D9F0D3", "#DADAEB", "#A1D99B")
@@ -538,6 +548,26 @@ ggmap(google_map) +
 ggsave("results/All_MRGs_map.pdf", width = 12, height = 7, scale = 1) 
 ggsave("results/All_MRGs_map.png", width = 11, height = 6, scale = 1) 
 ```
+
+```{r}
+ggmap(google_map) +
+  geom_point(data = gene_data, 
+             aes(lon, lat, color = gene, size = rpkm), alpha = 0.5, inherit.aes = FALSE) +
+  scale_size_continuous(range = c(1, 10)) + # Adjust size scale for better visibility
+  scale_color_manual(values = colors) + 
+  guides(color = guide_legend(override.aes = list(alpha = 1)),
+         size = guide_legend(override.aes = list(alpha = 1), title = "RPKM")) +
+  theme_bw() +
+  theme(legend.position = "right",
+        legend.key.width = unit(1, "cm"),
+        legend.key.height = unit(0.43, "cm"),
+        legend.text = element_text(size = 8)) +
+  labs(x = "Longitude", y = "Latitude", color = "Gene", size = "RPKM", title = "Map of All MRG Presence") +
+  coord_quickmap(xlim = c(-83.5, -82.9), ylim = c(41.6, 42.089)) + 
+  facet_grid(type_name ~ gene)
+l```
+
+
 
 Map for all ARGs
 ```{r}
