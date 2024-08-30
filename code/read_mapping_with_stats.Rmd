@@ -6,21 +6,26 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = here::here("~/projects/2024_mrg_and_arg_copy_from_saahith"))
+knitr::opts_knit$set(root.dir = here::here("~/projects/2024_mrg_and_arg_copy_from_saahith/"))
 
-library(ggmap)
 library(tidyverse)
 library(Rsamtools)
 library(ggpubr)
 library(readr)
+library(ggmap)
+library(viridis)
+library(RColorBrewer)
+
+
+
 pg <- DBI::dbConnect(RPostgres::Postgres(),dbname = "glamr_data", host = "localhost", port = "5432", user = "glamr_admin", password = "glamr2023") 
 ```
-
 
 ```{r}
 secrets <- yaml::read_yaml("secrets.yaml")
 maps_api_key <- secrets$maps_api_key
 ```
+
 
 ## Idetifying Samples for mapping
 Get sample metadata
@@ -34,9 +39,21 @@ Get sample metadata
 #          year = lubridate::year(date)) %>% 
 #   select(SampleID, StudyID, date, date_same_year, year, lat, lon, NOAA_Site , starts_with("size_frac"))
 
+
+# Metadata exists for some samples that haven't had reads downloaded; don't consider these in subsequent steps
+samples_mapped <- Sys.glob("data/metagenomic_reads/samp_*_fwd.fastq.gz") %>%
+  data.frame(path = .) %>%
+  unglue::unglue_unnest(path, "data/metagenomic_reads/{SampleID}_fwd.fastq.gz",remove = FALSE) %>%
+  mutate(link_path = fs::link_path(path),
+         data_exists = fs::file_exists(link_path)) %>%
+  filter(data_exists) %>%
+  pull(SampleID)
+
+# Read in sample information from postgres database
 samples <- tbl(pg,"glamr_samples") |>
-  filter(sample_type == "metagenome") %>% 
-  collect() 
+  filter(sample_type == "metagenome",
+         SampleID %in% local(samples_mapped)) %>% 
+  collect()
 ```
 Read-in Gene Info
 ```{r}
@@ -126,13 +143,13 @@ calc_rpkm <- function(bam_path){
                 select(SampleID="sample",sample_read_count="count")) |>
     mutate(per_million = sample_read_count/1000000,
            rpm = mapped/per_million,
-           rpkm = rpm/seqlength)
+           rpkm = rpm/(seqlength/1000)) # seqlength in kilobasepair
 } 
 ```
 
 Read-in read_mapping results
 ```{r}
-bam_files <- system("ls data/gene_mapping/*.bam", intern = TRUE)
+bam_files <- Sys.glob("data/gene_mapping/*.bam")
 
 bam_files_w_info <- bam_files %>% 
   data.frame(path = .) %>% 
@@ -146,8 +163,6 @@ all_bam_stats_w_seqs_bam <- map_df(bam_files_w_info$path, bam_stats_w_nuc_info) 
   write_rds("data/read_mapping_summary.rds")
 
 all_bam_stats_w_seqs_bam <- read_rds("data/read_mapping_summary.rds")
-
-
 ```
 Reads-in the proccessed results (if restarting)
 
@@ -173,16 +188,16 @@ write_rds(rpkm_results,"data/rpkms.rds")
 
 rpkm_results <- read_rds("data/rpkms.rds") 
 ```
+
 Summarize rpkm results
 ```{r}
 rpkm_sample_info <- rpkm_results |>
   left_join(mapped_sample_info) 
+
 per_gene_rpkm_summary <- rpkm_sample_info |>
   group_by(gene,SampleID) |>
   summarize(rpkm=sum(rpkm)) |>
   left_join(mapped_sample_info) 
-
-
 ```
 
 ```{r}
@@ -194,8 +209,11 @@ public_glmr_datasets <- GLAMR_datasets |>
 
 public_metagenome_samples <- samples |>
   filter(SampleID %in% samples$SampleID, 
+         SampleID %in% samples_mapped,
          StudyID %in% public_glmr_datasets$StudyID, 
-         geo_loc_name=="Lake Erie") 
+         geo_loc_name=="Lake Erie") |>
+  write_csv("data/for_pub_supplemental/filtered_samples.tsv")
+
 ```
 
 
@@ -247,7 +265,7 @@ metal_data <- per_gene_rpkm_summary %>%
 years_to_show <- c("2014", "2019")
 
 # Plot 2: Individual Trends of All the Metal Resistant Genes
-p2 <- metal_data %>%
+(p2 <- metal_data %>%
   filter(SampleID %in% public_metagenome_samples$SampleID) %>%
   ggplot(aes(x = year, y = rpkm, color = gene)) +
   geom_point() +
@@ -256,8 +274,8 @@ p2 <- metal_data %>%
   scale_y_log10() +
   theme_bw() +
   labs(title = "Individual Trends of All the Metal Resistant Genes", y = "RPKM", x = "Year")
+)
 
-print(p2)
 
 # Save the second plot
 ggsave("results/Individual_Trends_of_All_the_Metal_Resistant_Genes.png", plot = p2, width = 10, height = 6, dpi = 300)
@@ -278,14 +296,14 @@ data_2019 <- metal_data %>%
 # Check distribution of the data
 data_2014 %>% log() %>% hist()
 
-# Run t-test
+# Run t-test example
 t.test(data_2014, data_2019)
 
-# Run wilcox test
+# Run wilcox test example
 wilcox.test(data_2014, data_2019)
 
 
-p3 <- metal_data %>%
+(p3 <- metal_data %>%
   filter(SampleID %in% public_metagenome_samples$SampleID) %>%
   ggplot(aes(x = year, y = rpkm, color = gene)) +
   geom_point() +
@@ -295,8 +313,7 @@ p3 <- metal_data %>%
   theme_bw() +
   labs(title = "Overall Trend of All the Metal Resistant Genes", y = "RPKM", x = "Year") 
   #theme(legend.position = "bottom", aspect.ratio = 1.0) # Set aspect ratio here
-
-print(p3)
+)
 
 metal_data %>%
   filter(SampleID %in% public_metagenome_samples$SampleID) %>%
@@ -305,11 +322,8 @@ metal_data %>%
   scale_y_log10() +
   ggbeeswarm::geom_quasirandom(aes(color = gene), alpha = 0.5) 
 
-
-  
-  
-ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.png", plot = metal_data, width = 10, height = 12, dpi = 300)
-ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.pdf", plot = metal_data, width = 10, height = 12)
+ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.png", width = 10, height = 12, dpi = 300)
+ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.pdf", width = 10, height = 12)
 
 
 
@@ -327,8 +341,6 @@ metal_data %>%
 # Original plot code remains the same
 
 # Adjust the width of the saved plot image to half
-
-
 
 
 # Plot: Annual Variations of the Metal Resistant Genes Microbiome
@@ -382,10 +394,11 @@ filtered_data <- metal_data %>%
   filter(SampleID %in% public_metagenome_samples$SampleID)
 
 # Create the plot and store it in a variable
-plot <- ggboxplot(filtered_data, x = "year", y = "rpkm", outlier.shape = NA) +
+(plot <- ggboxplot(filtered_data, x = "year", y = "rpkm", outlier.shape = NA) +
   stat_compare_means(method = "wilcox", na.rm = TRUE, vjust = 0.8) +
   scale_y_log10() +
   ggbeeswarm::geom_quasirandom(aes(color = gene), alpha = 0.5)
+)
 
 # Save the plot as PNG and PDF
 ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.png", plot = plot, width = 10, height = 12, dpi = 300)
@@ -410,7 +423,6 @@ other_data <- per_gene_rpkm_summary %>%
 other_data$year <- factor(other_data$year, levels = c(2014, 2019))
 
 other_data %>%
-  
  filter(SampleID %in% public_metagenome_samples$SampleID) %>%
   ggplot(aes(x = year, y = rpkm, color = gene)) +
   geom_point() +
@@ -468,10 +480,7 @@ ggsave("results/BoxIndividual_Trends_of_All_ARGs.pdf", plot = last_plot(), width
 
 
 other_data %>%
-  
-  
   filter(SampleID %in% public_metagenome_samples$SampleID) |>
-
   filter(rpkm > 1e-5) %>%
   filter(!is.na(year)) %>%
   ggplot(aes(x = date_same_year, y = rpkm, color = gene)) +
@@ -499,7 +508,7 @@ other_data <- other_data %>%
   filter(SampleID %in% public_metagenome_samples$SampleID)
 
 # Generate the plot with only 2014 and 2019 data points
-p2 <- ggplot(other_data, aes(x = year, y = rpkm, color = gene)) +
+(p2 <- ggplot(other_data, aes(x = year, y = rpkm, color = gene)) +
   geom_point() +
   geom_smooth(aes(group = 1), method = "lm", color = "black") +  # Single line of best fit
   scale_y_log10() +
@@ -513,11 +522,9 @@ p2 <- ggplot(other_data, aes(x = year, y = rpkm, color = gene)) +
     axis.title.x = element_text(size = 8),
     axis.title.y = element_text(size = 8),
     legend.title = element_text(size = 8)
-  
   )
+)
 
-# Print the plot
-print(p2)
 
 # Save the plot with adjusted dimensions
 ggsave("results/Overall_Trend_of_All_ARGs.png", plot = p2, width = 4, height = 6, dpi = 300)
@@ -562,13 +569,14 @@ wilcox_test_result <- wilcox.test(data_2014, data_2019)
 print(wilcox_test_result)
 
 # Create the plot and store it in a variable
-plot <- ggboxplot(other_data, x = "year", y = "rpkm", outlier.shape = NA) +
+(plot <- ggboxplot(other_data, x = "year", y = "rpkm", outlier.shape = NA) +
   stat_compare_means(method = "wilcox", na.rm = TRUE, vjust = 0.8) +
   scale_y_log10() +
   ggbeeswarm::geom_quasirandom(aes(color = gene), alpha = 0.5) +
   theme_bw() +
   labs(x = "Year", y = "RPKM")
-
+)
+  
 # Save the plot as PNG and PDF
 ggsave("results/FStats_Overall_Trend_of_All_ARGs.png", plot = plot, width = 10, height = 12, dpi = 300)
 ggsave("results/FStats_Overall_Trend_of_All_ARGs.pdf", plot = plot, width = 10, height = 12)
@@ -622,13 +630,12 @@ per_gene_rpkm_summary |>
   stat_compare_means(method = "wilcox", comparisons = list(c("ArsD", "MerA"))) # if you want to add individual comparisons
 
 
-ggplot(aes(x=gene,y=rpkm,color=gene)) + 
-  geom_boxplot() +
-  
-   scale_y_log10() + 
-  # facet_wrap(~year,scales="free_y") +
-  theme_bw() +
-  labs(title = "Box Plot of MRGs", x="Gene", y="RPKM") 
+# ggplot(aes(x=gene,y=rpkm,color=gene)) + 
+#   geom_boxplot() +
+#    scale_y_log10() + 
+#   # facet_wrap(~year,scales="free_y") +
+#   theme_bw() +
+#   labs(title = "Box Plot of MRGs", x="Gene", y="RPKM") 
 
 
 ggsave("results/Box_plot_of_MRGS.pdf",width=5,height=3,scale=1.5)
@@ -657,21 +664,17 @@ p_value <- kruskal_test$p.value
 p_value_text <- ifelse(p_value < 2.2e-16, "< 2.2e-16", format(p_value, digits = 3))
 
 # Create the plot and store it in a variable
-plot <- ggboxplot(filtered_data, x = "gene", y = "rpkm", color = "gene") +
+(plot <- ggboxplot(filtered_data, x = "gene", y = "rpkm", color = "gene") +
   scale_y_log10() +
   
   annotate("text", x = 7, y = 1e-1, label = paste("Kruskal-Wallis test, p =", p_value_text), hjust = 0.5) + # Add custom annotation
   theme_bw() +
   labs(title = "Box Plot of MRGs", x="Gene", y="RPKM")
-
+)
+  
 # Save the plot as PNG and PDF
 ggsave("results/Stats_Box_Plot_of_MRGs.png", plot = plot, width = 15, height = 12, dpi = 300)
 ggsave("results/Stats_Box_Plot_of_MRGs.pdf", plot = plot, width = 15, height = 12)
-
-
-
-
-
 
 ```
 
@@ -729,7 +732,7 @@ p_value <- kruskal_test$p.value
 p_value_text <- ifelse(p_value < 2.2e-16, "< 2.2e-16", format(p_value, digits = 3))
 
 # Create the plot
-plot <- ggplot(filtered_data, aes(x=gene, y=rpkm, color=gene)) + 
+(plot <- ggplot(filtered_data, aes(x=gene, y=rpkm, color=gene)) + 
   geom_boxplot() +
   scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x), 
                 labels = scales::trans_format("log10", scales::math_format(10^.x))) +
@@ -737,8 +740,8 @@ plot <- ggplot(filtered_data, aes(x=gene, y=rpkm, color=gene)) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
   labs(x="Gene", y="RPKM", title = "Box Plot of ARGs") +
-  
   annotate("text", x = 10, y = 1e-1, label = paste("Kruskal-Wallis test, p =", p_value_text), hjust = 0.5) # Add custom annotation
+)
 
 # Save the plot as PNG and PDF
 ggsave("results/Stats_Box_plot_of_ARGS.pdf", plot = plot, width = 8, height = 5, scale = 1.5)
@@ -794,14 +797,6 @@ ggsave("results/MerD_map.png",width=5,height = 5,scale=1.5)
 ```
 Map for all MRGs
 ```{r}
-library(ggmap)
-library(ggplot2)
-library(dplyr)
-library(viridis)
-library(RColorBrewer)
-
-
-
 register_google(maps_api_key) 
 
 # Define the metal-resistant genes
@@ -813,22 +808,35 @@ google_map <- get_googlemap(center = c(lon = -83.326801, lat = 41.778739), zoom 
 # Prepare the data for plotting
 gene_data <- per_gene_rpkm_summary %>%
   filter(SampleID %in% public_metagenome_samples$SampleID) %>%
-  filter(gene %in% metal_resistant_genes)
+  filter(gene %in% metal_resistant_genes) %>%
+  left_join(gene_info) %>%
+  select(gene, lon, lat, rpkm, type_name) %>%
+  distinct()
+
+avg_gene_abundance <- gene_data %>% 
+  group_by(gene) %>% 
+  filter(!is.na(rpkm)) %>% 
+  summarise(mean_abund = mean(rpkm)) %>% 
+  arrange(desc(mean_abund)) %>% 
+  mutate(rank = row_number())
 
 # Create a color palette that contrasts bright and dark colors
-bright_colors <- c("#9ECAE1", "#C7E9C0", "#FEE6CE", "#FDCDAC", "#FFF7BC", "#D9F0D3", "#DADAEB", "#A1D99B")
-dark_colors <- c("#3182BD", "#31A354", "#E6550D", "#FD8D3C", "#FDD0A2", "#74C476", "#6A51A3", "#B8E186")
-# Assign colors based on the prevalence of genes, bright for less prevalent and dark for more prevalent
-# Adjust this according to your data
-colors <- ifelse(gene_data$gene %in% c("MerA", "MerP", "ArsD"), dark_colors, bright_colors)
-names(colors) <- metal_resistant_genes
+colors_df <- data.frame(color_hex = c("#3182BD", "#31A354", "#E6550D", "#FD8D3C", "#FDD0A2", "#74C476", "#6A51A3", "#B8E186","#9ECAE1", "#C7E9C0", "#FEE6CE", "#FDCDAC", "#FFF7BC", "#D9F0D3", "#DADAEB", "#A1D99B")) %>% 
+  mutate(rank = row_number()) %>% 
+  left_join(avg_gene_abundance)
+
+gene_data_w_colors <- gene_data %>% 
+  left_join(colors_df %>% select(gene, color_hex))
+
 
 # Plot the map with points for metal-resistant genes
 ggmap(google_map) +
-  geom_point(data = gene_data, 
-             aes(lon, lat, color = gene, size = rpkm), alpha = 0.5, inherit.aes = FALSE) +
-  scale_size_continuous(range = c(2, 10)) + # Adjust size scale for better visibility
-  scale_color_manual(values = colors) + 
+  geom_point(data = gene_data_w_colors, 
+             aes(lon, lat, color = color_hex, size = rpkm), alpha = 0.5, inherit.aes = FALSE) +
+  scale_size_continuous(range = c(.2, 5)) + # Adjust size scale for better visibility
+  scale_color_identity(guide = "legend",
+                       labels = colors_df$gene,
+                       breaks = colors_df$color_hex) +
   guides(color = guide_legend(override.aes = list(alpha = 1)),
          size = guide_legend(override.aes = list(alpha = 1), title = "RPKM")) +
   theme_bw() +
@@ -836,12 +844,16 @@ ggmap(google_map) +
         legend.key.width = unit(1, "cm"),
         legend.key.height = unit(0.43, "cm"),
         legend.text = element_text(size = 8)) +
-  labs(x = "Longitude", y = "Latitude", color = "Gene", size = "RPKM", title = "Map of All MRG Presence") +
-  coord_quickmap(xlim = c(-83.5, -82.9), ylim = c(41.6, 42.089))
+  labs(x = "Longitude", y = "Latitude", color = "Gene", size = "RPKM") +
+  coord_quickmap(xlim = c(-83.5, -82.9), ylim = c(41.6, 42.089)) +
+  facet_grid(~type_name)
 
 # Save the map to a file
 ggsave("results/All_MRGs_map.pdf", width = 12, height = 7, scale = 1) 
 ggsave("results/All_MRGs_map.png", width = 11, height = 6, scale = 1) 
+
+ggsave("results/publication_figures/All_MRGs_map.pdf", width = 12, height = 7, scale = 1) 
+ggsave("results/publication_figures/All_MRGs_map.png", width = 11, height = 6, scale = 1) 
 ```
 
 Map for all ARGs
@@ -866,13 +878,16 @@ color_palette <- c(brewer.pal(9, "Set1"), brewer.pal(8, "Set2"), "#A6CEE3", "#B2
 # Ensure that the palette is the right length
 color_palette <- color_palette[1:length(antibiotic_resistant_genes)]
 
+
 # Create the plot with the new color palette
 ggmap(google_map) +
   geom_point(data = per_gene_rpkm_summary %>% 
               filter(SampleID %in% public_metagenome_samples$SampleID) %>%
-              filter(gene %in% antibiotic_resistant_genes), 
+              filter(gene %in% antibiotic_resistant_genes) %>% 
+              left_join(gene_info), 
              aes(lon, lat, color = gene, size = rpkm), alpha = 0.5, inherit.aes = FALSE) +
-  scale_size_area(max_size = 10) +
+  #scale_size_area(max_size = 5) +
+  scale_size_continuous(range = c(.2, 5)) + # Adjust size scale for better visibility
   scale_color_manual(values = color_palette) +  
   guides(color = guide_legend(override.aes = list(alpha = 1)),  
          size = guide_legend(override.aes = list(alpha = 1), title = "RPKM")) +  
@@ -882,7 +897,8 @@ ggmap(google_map) +
         legend.key.height = unit(0.43, "cm"),
         legend.text = element_text(size = 8)) +
   labs(x = "Longitude", y = "Latitude", color = "Gene", size = "RPKM", title = "Map of All ARG Presence") +
-  coord_quickmap(xlim = c(-83.5, -82.9), ylim = c(41.6, 42.089)) 
+  coord_quickmap(xlim = c(-83.5, -82.9), ylim = c(41.6, 42.089)) +
+  facet_wrap(~type_name)
 
 # Save the map to a file
 ggsave("results/All_ARGs_map.pdf", width = 12, height = 7, scale = 1) 
@@ -930,6 +946,7 @@ total_samples_per_year <- per_gene_rpkm_summary %>%
   filter(!is.na(year)) %>%
   filter(year %in% selected_years) %>%
   group_by(year) %>%
+  select(SampleID, year) %>% distinct() %>% 
   summarise(total_samples = n(), .groups = 'drop')
 
 # Join the totals back to the main summary
@@ -939,6 +956,7 @@ gene_year_summary <- per_gene_rpkm_summary %>%
   filter(!is.na(year)) %>%
   filter(gene %in% selected_genes) %>%
   filter(year %in% selected_years) %>%
+  select(gene, year, SampleID) %>% distinct() %>%
   group_by(gene, year) %>%
   summarise(n_samples = n(), .groups = 'drop') %>%
   left_join(total_samples_per_year, by = "year") %>%
@@ -972,6 +990,7 @@ total_samples_per_year <- per_gene_rpkm_summary %>%
   filter(!is.na(year)) %>%
   filter(year %in% c(2014, 2019)) %>%
   group_by(year) %>%
+  select(SampleID, year) %>% distinct() %>% 
   summarise(total_samples = n(), .groups = 'drop')
 
 # Join the totals back to the main summary and calculate the percentage
@@ -983,6 +1002,7 @@ arg_year_summary <- per_gene_rpkm_summary %>%
   filter(gene %in% selected_genes) %>%
   filter(year %in% c(2014, 2019)) %>%
   group_by(gene, year) %>%
+  select(gene, year, SampleID) %>% distinct() %>%
   summarise(n_samples = n(), .groups = 'drop') %>%
   left_join(total_samples_per_year, by = "year") %>%
   mutate(percentage = (n_samples / total_samples) * 100)
@@ -999,8 +1019,6 @@ ggplot(arg_year_summary, aes(x = gene, y = percentage, fill = factor(year))) +
 # Save the plots
 ggsave("results/Percentage_of_Samples_Containing_ARGs_in_2014_and_2019.pdf", width = 10, height = 5, scale = 1.5)
 ggsave("results/Percentage_of_Samples_Containing_ARGs_in_2014_and_2019.png", width = 10, height = 5, scale = 1.5)
-
-
 ```
 
 
@@ -1074,10 +1092,7 @@ ggsave("results/ARG_relative_abundance_over_years.png", plot = p, width=10, heig
 ```
 
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(scales)
+
 
 # Convert the year to a factor if it's not already
 per_gene_rpkm_summary$year <- as.factor(per_gene_rpkm_summary$year)
@@ -1190,20 +1205,17 @@ if (!requireNamespace("googledrive", quietly = TRUE)) {
 }
 library(googledrive)
 
-drive_auth()
+#drive_auth()
 
-write.csv(per_gene_rpkm_summary, "per_gene_rpkm_summary.csv", row.names = FALSE)
+write.csv(per_gene_rpkm_summary, "data/for_pub_supplemental/per_gene_rpkm_summary.csv", row.names = FALSE)
 
-file <- drive_upload("per_gene_rpkm_summary.csv")
-
-drive_share(file, role = "reader", type = "anyone")
-
-file_id <- as_id(file)
-link <- sprintf("https://drive.google.com/file/d/%s/view", file_id)
-print(link)
-
-
-
+# file <- drive_upload(media = "per_gene_rpkm_summary.csv")
+# 
+# drive_share(file, role = "reader", type = "anyone")
+# 
+# file_id <- as_id(file)
+# link <- sprintf("https://drive.google.com/file/d/%s/view", file_id)
+# print(link)
 ```
 
 ```{r}
