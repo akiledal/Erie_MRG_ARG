@@ -1,0 +1,97 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+epa_data <- read_csv("data/doi.org_10.25976_6fgn-0915.csv")
+
+mercury_data <- epa_data %>% 
+  mutate( year = lubridate::year(ActivityStartDate)) %>% 
+  filter(CharacteristicName == "Mercury",
+         MonitoringLocationName == "Lake Erie",
+         MonitoringLocationLatitude > 41.34 & MonitoringLocationLatitude < 42.113,
+         MonitoringLocationLongitude > -83.705 & MonitoringLocationLongitude < -82.514)
+
+
+(mer_plot <- mercury_data %>% 
+  ggplot(aes(ActivityStartDate, ResultValue)) + 
+  geom_point() +
+  #scale_y_log10() +
+  theme_bw() + 
+  labs(y= "Mercury (ug/L)", x = NULL)
+)
+```
+
+```{r}
+mercury_data <- epa_data %>% 
+  mutate( year = lubridate::year(ActivityStartDate)) %>% 
+  filter(CharacteristicName == "Lead",
+         MonitoringLocationName == "Lake Erie",
+         MonitoringLocationLatitude > 41.34 & MonitoringLocationLatitude < 42.113,
+         MonitoringLocationLongitude > -83.705 & MonitoringLocationLongitude < -82.514)
+
+
+(lead_plot <- mercury_data %>% 
+  ggplot(aes(ActivityStartDate, ResultValue)) + 
+  geom_point() +
+  #scale_y_log10() +
+  theme_bw() + 
+  labs(y= "Lead (ug/L)", x = NULL)
+)
+```
+
+```{r}
+mercury_data <- epa_data %>% 
+  mutate( year = lubridate::year(ActivityStartDate)) %>% 
+  filter(CharacteristicName == "Arsenic",
+         MonitoringLocationName == "Lake Erie",
+         MonitoringLocationLatitude > 41.34 & MonitoringLocationLatitude < 42.113,
+         MonitoringLocationLongitude > -83.705 & MonitoringLocationLongitude < -82.514)
+
+
+(ars_plot <- mercury_data %>% 
+  ggplot(aes(ActivityStartDate, ResultValue)) + 
+  geom_point() +
+  #scale_y_log10() +
+  theme_bw() + 
+  labs(y= "Arsenic (ug/L)", x = NULL)
+)
+```
+
+```{r}
+library(patchwork)
+
+
+mer_plot + ars_plot + lead_plot
+
+
+```
+
+
+```{r}
+mercury_data <- epa_data %>% 
+  mutate( year = lubridate::year(ActivityStartDate)) %>% 
+  filter(CharacteristicName %in% c("Arsenic", "Lead", "Mercury"),
+         MonitoringLocationName == "Lake Erie",
+         MonitoringLocationLatitude > 41.34 & MonitoringLocationLatitude < 42.113,
+         MonitoringLocationLongitude > -83.705 & MonitoringLocationLongitude < -82.514) 
+
+
+(combined_plot <- mercury_data %>% 
+  ggplot(aes(ActivityStartDate, ResultValue)) + 
+  geom_point() +
+  scale_y_log10() +
+  theme_bw() + 
+  labs(y= "ug/L (log10)", x = NULL) +
+    facet_grid(~CharacteristicName)
+)
+
+ggsave("results/EPA_metals.pdf", width = 3, height = 2, scale =1.75)
+ggsave("results/EPA_metals.png", width = 3, height = 2, scale =1.75)
+```
+
