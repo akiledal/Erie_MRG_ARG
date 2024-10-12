@@ -4,7 +4,7 @@ output: html_notebook
 editor_options: 
   chunk_output_type: inline
 ---
-
+## Setup
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = here::here("~/projects/2024_mrg_and_arg_copy_from_saahith/"))
 
@@ -15,12 +15,13 @@ library(readr)
 library(ggmap)
 library(viridis)
 library(RColorBrewer)
+library(ggpubr)
+library(ggbeeswarm)
 
-
-
-pg <- DBI::dbConnect(RPostgres::Postgres(),dbname = "glamr_data", host = "localhost", port = "5432", user = "glamr_admin", password = "glamr2023") 
+pg <- DBI::dbConnect(RPostgres::Postgres(),dbname = "glamr_data", host = "cayman.earth.lsa.umich.edu", port = "5432", user = "glamr_admin", password = "glamr2023") 
 ```
 
+Set up mapping API
 ```{r}
 secrets <- yaml::read_yaml("secrets.yaml")
 maps_api_key <- secrets$maps_api_key
@@ -66,9 +67,6 @@ id_count <- gene_info |>
 ```
 Read-in Total Number of Reads Per Sample
 ```{r}
-pg <- DBI::dbConnect(RPostgres::Postgres(),dbname = "glamr_data", host = "localhost", port = "5432", user = "glamr_admin", password = "glamr2023")
-
-
 read_counts <- tbl(pg,"read_count") |>
   filter(sample %in% local(samples$SampleID),
          read_state == "decon_reads",
@@ -77,10 +75,10 @@ read_counts <- tbl(pg,"read_count") |>
 ```
 
 
-Define Function for Proccessing.read_mapping 
-```{r}
+Define Function for proccessing read_mapping 
+** Not used in the final version
+```{}
 bam_path = "data/gene_mapping/samp_1497_mapped.bam"
-
 
 bam_stats_w_nuc_info <- function(bam_path){
 
@@ -180,7 +178,7 @@ summary.table <- all_bam_stats_w_seqs_bam |>
   
 
 
-Calc. rpkm
+## Calc. rpkm
 ```{r}
 rpkm_results <- map_dfr(bam_files_w_info$path,calc_rpkm) 
 
@@ -189,7 +187,7 @@ write_rds(rpkm_results,"data/rpkms.rds")
 rpkm_results <- read_rds("data/rpkms.rds") 
 ```
 
-Summarize rpkm results
+### Summarize rpkm results
 ```{r}
 rpkm_sample_info <- rpkm_results |>
   left_join(mapped_sample_info) 
@@ -210,8 +208,9 @@ public_glmr_datasets <- GLAMR_datasets |>
 public_metagenome_samples <- samples |>
   filter(SampleID %in% samples$SampleID, 
          SampleID %in% samples_mapped,
-         StudyID %in% public_glmr_datasets$StudyID, 
-         geo_loc_name=="Lake Erie") |>
+         StudyID %in% public_glmr_datasets$dataset, 
+         geo_loc_name=="Lake Erie",
+         year %in% c(2014,2019)) |>
   write_csv("data/for_pub_supplemental/filtered_samples.tsv")
 
 ```
@@ -249,7 +248,7 @@ ggsave("results/Presence_of_Metal_Resistant_Genes_in_the_Microbiome.pdf", plot =
 
 
 
-Creates Summary Plot for MRGs
+## Creates Summary Plot for MRGs
 ```{r}
 library(ggplot2)
 library(dplyr)
@@ -295,7 +294,7 @@ data_2019 <- metal_data %>%
   pull(rpkm)
 
 # Check distribution of the data
-data_2014 %>% log() %>% hist()
+#data_2014 %>% log() %>% hist()
 
 # Run t-test example
 t.test(data_2014, data_2019)
@@ -382,7 +381,7 @@ ggsave("results/BoxIndividual_Trends_of_All_MRGs.pdf", plot = last_plot(), width
 
 
 
-Individual/overall trend MRGs with STATS
+### Individual/overall trend MRGs with STATS
 ```{r}
 library(ggplot2)
 library(ggpubr)
@@ -410,13 +409,15 @@ ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.pdf", plot 
 
 
 
-Creates Summary Plot for ARGs
+## Creates Summary Plot for ARGs
 ```{r}
 library(ggplot2)
 library(dplyr)
 
 other_genes <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
-                 "IpxA", "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "GyrA", "GyrB")
+                 "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "bla", "smeA"
+                 # "GyrA", "GyrB", "IpxA" # not ARGs in the same sense as the other genes
+                 )
 other_data <- per_gene_rpkm_summary %>%
   filter(gene %in% other_genes) %>%
   mutate(year = as.numeric(format(date, "%Y"))) %>%
@@ -528,17 +529,14 @@ ggsave("results/Overall_Trend_of_All_ARGs.pdf", plot = p2, width = 4, height = 6
 
 
 
-Individual/overall trend ARGs with STATS
+### Individual/overall trend ARGs with STATS
 
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(ggpubr)
-library(ggbeeswarm)
-
 # Define the genes to include
 other_genes <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
-                 "IpxA", "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "GyrA", "GyrB")
+                 "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "bla", "smeA"
+                 # "GyrA", "GyrB", "IpxA" # not ARGs in the same sense as the other genes
+                 )
 
 # Filter and mutate the data
 other_data <- per_gene_rpkm_summary %>%
@@ -573,19 +571,6 @@ ggsave("results/FStats_Overall_Trend_of_All_ARGs.png", plot = plot, width = 4, h
 ggsave("results/FStats_Overall_Trend_of_All_ARGs.pdf", plot = plot, width = 4, height = 3, scale = 2)
 
 ```
-
-
-Individual/overall trend MRGs with STATS
-
-```{r}
-library(ggplot2)
-library(dplyr)
-library(ggpubr)
-library(ggbeeswarm)
-
-
-```
-
 
 
 Box Plot rpkm for MRGs
@@ -676,7 +661,9 @@ ggsave("results/Stats_Box_Plot_of_MRGs.pdf", plot = plot, width = 15, height = 1
 Box Plot rpkm for ARGs
 ```{r}
 genes_to_include <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
-                      "IpxA", "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "GyrA", "GyrB")
+                 "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "bla", "smeA"
+                 # "GyrA", "GyrB", "IpxA" # not ARGs in the same sense as the other genes
+                 )
 
 ggplot(per_gene_rpkm_summary |>
    filter(SampleID %in% public_metagenome_samples$SampleID) |>
@@ -703,13 +690,11 @@ ggsave("results/Box_plot_of_ARGS.png",width=5,height=3,scale=1.5)
 
 Box Plot for ARGs with STATS
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(ggpubr)
-
 # List of genes to include
-genes_to_include <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
-                      "IpxA", "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "GyrA", "GyrB")
+genes_to_include <- other_genes <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
+                 "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "bla", "smeA"
+                 # "GyrA", "GyrB", "IpxA" # not ARGs in the same sense as the other genes
+                 )
 
 # Filter the data
 filtered_data <- per_gene_rpkm_summary |>
@@ -786,7 +771,8 @@ ggmap(get_googlemap(center = c(lon = -83.326801, lat = 41.778739), zoom = 10, ma
 ggsave("results/MerD_map.pdf",width=5,height = 5,scale=1.5) 
 ggsave("results/MerD_map.png",width=5,height = 5,scale=1.5) 
 ```
-Map for all MRGs
+
+## Map for all MRGs
 ```{r}
 register_google(maps_api_key) 
 
@@ -812,18 +798,23 @@ avg_gene_abundance <- gene_data %>%
   mutate(rank = row_number())
 
 # Create a color palette that contrasts bright and dark colors
-colors_df <- data.frame(color_hex = c("#3182BD", "#31A354", "#E6550D", "#FD8D3C", "#FDD0A2", "#74C476", "#6A51A3", "#B8E186","#9ECAE1", "#C7E9C0", "#FEE6CE", "#FDCDAC", "#FFF7BC", "#D9F0D3", "#DADAEB", "#A1D99B")) %>% 
+colors_df <- data.frame(color_hex = c("#3182BD", "#31A354", "#E6550D", "#FD8D3C", "#FDD0A2", "#74C476", "#6A51A3", "#B8E186","#9ECAE1", "#C7E9C0", "#FEE6CE" 
+                                      #"#FDCDAC", "#FFF7BC", "#D9F0D3", "#DADAEB", "#A1D99B"
+                                      ) %>% rev()) %>% 
   mutate(rank = row_number()) %>% 
   left_join(avg_gene_abundance)
 
 gene_data_w_colors <- gene_data %>% 
+  filter(rpkm > 0,
+         !is.na(rpkm)) %>% 
   left_join(colors_df %>% select(gene, color_hex))
 
 
 # Plot the map with points for metal-resistant genes
 ggmap(google_map) +
   geom_point(data = gene_data_w_colors, 
-             aes(lon, lat, color = color_hex, size = rpkm), alpha = 0.5, inherit.aes = FALSE) +
+             aes(lon, lat, color = color_hex, size = rpkm), 
+             alpha = 0.75, inherit.aes = FALSE) +
   scale_size_continuous(range = c(.2, 5)) + # Adjust size scale for better visibility
   scale_color_identity(guide = "legend",
                        labels = colors_df$gene,
@@ -848,7 +839,7 @@ ggsave("results/publication_figures/All_MRGs_map.pdf", width = 12, height = 7, s
 ggsave("results/publication_figures/All_MRGs_map.png", width = 11, height = 6, scale = 1) 
 ```
 
-Map for all ARGs
+## Map for all ARGs
 ```{r}
 library(ggmap)
 library(ggplot2)
@@ -860,7 +851,9 @@ register_google(maps_api_key)
 
 # Define the antibiotic-resistant genes
 antibiotic_resistant_genes <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
-                                "IpxA", "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "GyrA", "GyrB")
+                 "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "bla", "smeA"
+                 # "GyrA", "GyrB", "IpxA" # not ARGs in the same sense as the other genes
+                 )
 
 google_map <- get_googlemap(center = c(lon = -83.326801, lat = 41.778739), zoom = 10, maptype = "terrain")
 
@@ -876,7 +869,8 @@ ggmap(google_map) +
   geom_point(data = per_gene_rpkm_summary %>% 
               filter(SampleID %in% public_metagenome_samples$SampleID) %>%
               filter(gene %in% antibiotic_resistant_genes,
-                     rpkm > 0) %>% 
+                     rpkm > 0,
+                     !is.na(rpkm)) %>% 
               left_join(gene_info), 
              aes(lon, lat, color = gene, size = rpkm), alpha = 0.5, inherit.aes = FALSE) +
   #scale_size_area(max_size = 5) +
@@ -925,7 +919,7 @@ ggsave("results/Aac3_map.png", width = 12, height = 7, scale = 1)
 
 
 
-Number of MRG samples over time
+## Number of MRG samples over time
 ```{r}
 library(ggplot2)
 library(dplyr)
@@ -970,13 +964,15 @@ ggsave("results/Percentage_of_Samples_Containing_MRGs_in_2014_and_2019.pdf",  wi
 ggsave("results/Percentage_of_Samples_Containing_MRGs_in_2014_and_2019.png",  width = 3, height = 1, scale = 2.75)
 
 ```
-Number of ARG Samples Over Time
+## Number of ARG Samples Over Time
 ```{r}
 library(ggplot2)
 library(dplyr)
 
 selected_genes <- c("AmpC", "ermA", "ermC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
-                    "IpxA", "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "GyrA", "GyrB")
+                 "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "bla", "smeA"
+                 # "GyrA", "GyrB", "IpxA" # not ARGs in the same sense as the other genes
+                 )
 
 # Calculate the total number of samples per year
 total_samples_per_year <- per_gene_rpkm_summary %>%
@@ -1028,8 +1024,10 @@ library(scales)
 per_gene_rpkm_summary$year <- as.factor(per_gene_rpkm_summary$year)
 
 # Define your genes of interest
-genes_of_interest <- c("AmpC", "ErmA", "ErmC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
-                       "IpxA", "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "GyrA", "GyrB")
+genes_of_interest <- c("AmpC", "TEM-1B", "MerX", "AmpR", "Aac3", "BcrC", "TetA", "TetB", 
+                 "Aac(3)-Il", "VanH", "VanA", "VanX", "FosA3", "FosA", "bla", "smeA"
+                 # "GyrA", "GyrB", "IpxA" # not ARGs in the same sense as the other genes
+                 )
 
 # Filter the data for the genes of interest and the years 2014 and 2019
 arg_data_filtered <- per_gene_rpkm_summary %>%
@@ -1165,6 +1163,8 @@ ggsave("results/MRG_relative_abundance_over_years.png", width=10, height=5, scal
 ## Gene correlations
 ```{r}
 rpkm_wide <- rpkm_results %>% 
+  filter(SampleID %in% public_metagenome_samples$SampleID,
+         !gene %in% c("GyrA", "GyrB", "IpxA")) %>% 
   select(SampleID, gene, rpkm) %>% 
   group_by(SampleID, gene) %>% 
   summarise(rpkm = sum(rpkm)) %>% 
@@ -1220,6 +1220,9 @@ mrg_arg_corr_long %>%
 ```{r}
 
 rpkm_resistance <- rpkm_results %>% 
+  filter(
+    SampleID %in% public_metagenome_samples$SampleID,
+         !gene %in% c("GyrA", "GyrB", "IpxA")) %>% 
   select(SampleID, type_name,gene , rpkm) %>% 
   group_by(SampleID, gene) %>% 
   summarise(rpkm = sum(rpkm)) %>% 
@@ -1230,7 +1233,7 @@ rpkm_resistance <- rpkm_results %>%
   pivot_wider(names_from = type_name, values_from = rpkm, values_fill = 0) %>% 
   column_to_rownames("SampleID")
 
-resistance_corr <- cor(rpkm_resistance)
+resistance_corr <- cor(rpkm_resistance,method = "pearson")
 
 resistance_corr_clust <- dist(resistance_corr) %>% hclust(method = "average")
 
@@ -1245,6 +1248,7 @@ resistance_corr %>%
   pivot_longer(-res1, names_to = "res2", values_to = "r") %>% 
   left_join(clust_order %>% dplyr::rename(res1 = "resistance", res1_order = "order")) %>% 
   left_join(clust_order %>% dplyr::rename(res2 = "resistance", res2_order = "order")) %>% 
+  filter(res1 != res2) %>% 
   ggplot(aes(reorder(res1,res1_order), reorder(res2,res2_order), fill = r)) + 
   geom_tile() +
   scale_fill_viridis_c() +
@@ -1257,18 +1261,27 @@ ggsave("results/resistance_correlation.png", width = 4, height = 3, scale =2)
 ggsave("results/resistance_correlation.pdf", width = 4, height = 3, scale =2)
 
 rpkm_summary <- rpkm_results %>% 
+  filter(
+    SampleID %in% public_metagenome_samples$SampleID,
+         !gene %in% c("GyrA", "GyrB", "IpxA")) %>% 
   left_join(gene_info) %>% 
   select(SampleID, type_name, type_short, rpkm) %>% 
   group_by(SampleID, type_name, type_short) %>% 
   summarise(rpkm = mean(rpkm))
 
 mercury_resistance <- rpkm_summary %>% 
+  filter(
+    SampleID %in% public_metagenome_samples$SampleID
+    ) %>% 
   ungroup() %>% 
   filter(type_name == "Mercury") %>% 
   mutate(mercury_abund = rpkm) %>%
   select(SampleID, mercury_abund) 
 
 abs_rpkm_summary <- rpkm_summary %>% 
+  filter(
+    SampleID %in% public_metagenome_samples$SampleID
+    ) %>% 
   filter(type_short == "ARG") %>% 
   left_join(mercury_resistance)
 
