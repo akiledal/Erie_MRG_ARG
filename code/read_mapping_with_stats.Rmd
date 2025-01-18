@@ -390,10 +390,9 @@ library(ggbeeswarm)
 # Filter the data
 filtered_data <- metal_data %>%
   filter(SampleID %in% public_metagenome_samples$SampleID) %>% 
-  select(year, rpkm, SampleID, gene) %>% 
+  dplyr::select(year, rpkm, SampleID, gene) %>% 
   distinct()
   
-
 # Create the plot and store it in a variable
 (plot <- ggboxplot(filtered_data, x = "year", y = "rpkm", outlier.shape = NA) +
   stat_compare_means(method = "wilcox", na.rm = TRUE, vjust = 0.8) +
@@ -404,6 +403,34 @@ filtered_data <- metal_data %>%
 # Save the plot as PNG and PDF
 ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.png", plot = plot, width = 4, height = 3, scale = 2)
 ggsave("results/Stats_Overall_Trend_of_All_the_Metal_Resistant_Genes.pdf", plot = plot, width = 4, height = 3, scale = 2)
+
+
+# Linear mixed effects model to account for different gene intercepts
+mrg_lme <- lmerTest::lmer(rpkm ~ year + (1| gene),filtered_data)
+summary(mrg_lme)
+
+summary_model <- summary(mrg_lme)
+year_pval <- summary_model$coefficients["year2019", "Pr(>|t|)"]
+year_effect <- summary_model$coefficients["year2019", "Estimate"]
+
+
+(mrg_lme_plot <- filtered_data %>% 
+  ggplot(aes(year, rpkm, color = gene, group = gene)) +
+  ggbeeswarm::geom_quasirandom(aes(color = gene), alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_y_log10() +
+  theme_bw() +
+  labs(x = "Year", y = "RPKM [log10]") +
+  annotate("text", x = -Inf, y = Inf, 
+           label = paste0("RPKM ~ year + (1| gene)\nEffect (year) = ", signif(year_effect, 3), 
+                          "\nP-value = ", signif(year_pval, 3)), 
+           hjust = -0.1, vjust = 1.1, parse = FALSE) +
+    guides(color = guide_legend(ncol = 2))
+)
+  
+# Save the plot as PNG and PDF
+ggsave("results/Overall_Trend_of_All_ARGs_lme.png", width = 4, height = 3, scale = 1.25)
+ggsave("results/Overall_Trend_of_All_ARGs_lme.pdf", width = 4, height = 3, scale = 1.25)
 
 ```
 
@@ -569,6 +596,35 @@ print(wilcox_test_result)
 # Save the plot as PNG and PDF
 ggsave("results/FStats_Overall_Trend_of_All_ARGs.png", plot = plot, width = 4, height = 3, scale = 2)
 ggsave("results/FStats_Overall_Trend_of_All_ARGs.pdf", plot = plot, width = 4, height = 3, scale = 2)
+
+
+# Linear mixed effects model to account for different gene intercepts
+arg_lme <- lmerTest::lmer(rpkm ~ year + (1| gene),other_data)
+summary(arg_lme)
+
+summary_model <- summary(arg_lme)
+year_pval <- summary_model$coefficients["year2019", "Pr(>|t|)"]
+year_effect <- summary_model$coefficients["year2019", "Estimate"]
+
+
+(arg_lme_plot <- other_data %>% 
+  ggplot(aes(year, rpkm, color = gene, group = gene)) +
+  ggbeeswarm::geom_quasirandom(aes(color = gene), alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE) +
+  scale_y_log10() +
+  theme_bw() +
+  labs(x = "Year", y = "RPKM [log10]") +
+  annotate("text", x = -Inf, y = Inf, 
+           label = paste0("RPKM ~ year + (1| gene)\nEffect (year) = ", signif(year_effect, 3), 
+                          "\nP-value = ", signif(year_pval, 3)), 
+           hjust = -0.1, vjust = 1.1, parse = FALSE) +
+    guides(color = guide_legend(ncol = 2))
+)
+  
+# Save the plot as PNG and PDF
+ggsave("results/Overall_Trend_of_All_ARGs_lme.png", width = 4, height = 3, scale = 1.25)
+ggsave("results/Overall_Trend_of_All_ARGs_lme.pdf", width = 4, height = 3, scale = 1.25)
+
 
 ```
 
